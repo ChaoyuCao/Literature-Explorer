@@ -1,0 +1,38 @@
+{
+  "version": "0.2.3",
+  "archive_contents_and_checksums": "passed",
+  "wheel": {
+    "multi_source_input_records": 3,
+    "unique_papers": 1,
+    "duplicates_removed": 2,
+    "checks": [
+      "version/help",
+      "offline search",
+      "deduplication",
+      "metadata/provenance",
+      "journal metric",
+      "HTML assets",
+      "annotations/collections",
+      "CSV/RIS/BibTeX exchange",
+      "saved search merge",
+      "failure exit/report"
+    ]
+  },
+  "windows_executable": {
+    "multi_source_input_records": 3,
+    "unique_papers": 1,
+    "duplicates_removed": 2,
+    "checks": [
+      "version/help",
+      "offline search",
+      "deduplication",
+      "metadata/provenance",
+      "journal metric",
+      "HTML assets",
+      "annotations/collections",
+      "CSV/RIS/BibTeX exchange",
+      "saved search merge",
+      "failure exit/report"
+    ]
+  }
+}

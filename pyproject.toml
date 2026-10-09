@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mechanosensor-literature"
+dynamic = ["version"]
+description = "Literature search, metadata export, and interactive search reports"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+literature = "literature.cli:main"
+
+[project.gui-scripts]
+literature-gui = "literature.gui:main"
+
+[tool.setuptools.packages.find]
+include = ["literature*"]
+namespaces = false
+
+[tool.setuptools.dynamic]
+version = {attr = "literature.__version__"}
+
+[tool.setuptools.package-data]
+literature = ["dashboard.html", "explorer.js"]

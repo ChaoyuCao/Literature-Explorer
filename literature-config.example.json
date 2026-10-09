@@ -1,0 +1,12 @@
+{
+  "state": ".literature",
+  "output_dir": "outputs",
+  "source": "pubmed",
+  "timeout": 30,
+  "retries": 2,
+  "cache_ttl": 86400,
+  "offline": false,
+  "email": "",
+  "ncbi_api_key": "",
+  "journal_metrics": null
+}

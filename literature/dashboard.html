@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Literature search explorer</title>
+<style>
+:root{--ink:#183139;--muted:#597076;--line:#dce6e6;--accent:#087f8c;--bg:#f4f8f7}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+main{max-width:1480px;margin:auto;padding:32px}h1{font-size:34px;letter-spacing:-1px;margin:6px 0}h2{font-size:19px;margin:0 0 14px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:2px;color:var(--accent)}.muted,small{color:var(--muted)}
+.panel,.card{background:white;border:1px solid var(--line);border-radius:14px;padding:20px}.cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:24px 0}
+.card strong{display:block;font-size:28px}.filters{display:flex;gap:14px;flex-wrap:wrap;align-items:end;margin-bottom:20px}
+label{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:600}input,select,button{border:1px solid #c5d7d8;border-radius:7px;background:white;color:var(--ink);padding:9px;font:inherit}
+input{min-width:240px}select{max-width:280px}button{cursor:pointer}button.primary{background:var(--accent);color:white;border-color:var(--accent)}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin:16px 0}.chart{max-height:430px;overflow:auto}.bar-row{display:grid;grid-template-columns:minmax(130px,40%) 1fr 90px;align-items:center;gap:10px;margin:9px 0}
+.bar-label{text-align:left;border:0;background:transparent;padding:0;color:var(--accent);font-size:13px}.bar-track{background:#edf4f3;border-radius:4px;height:16px}.bar-fill{height:100%;background:var(--accent);border-radius:4px}.bar-value{text-align:right;font-size:12px}
+.row-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.warning{border-left:4px solid #bc782b;background:#fff8e9;padding:12px 16px;margin:16px 0;border-radius:4px}
+.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#f5f9f8}td.title{min-width:360px;width:45%}td.journal{min-width:190px}a{color:var(--accent)}summary{cursor:pointer;color:var(--accent);margin-top:8px}details p{white-space:pre-line}ul{padding-left:20px}.pager{display:flex;justify-content:space-between;align-items:center;margin-top:16px}.pill{display:inline-block;padding:2px 7px;background:#edf4f3;border-radius:4px;font-size:12px}.empty{padding:20px;color:var(--muted)}
+@media(max-width:950px){main{padding:16px}.cards{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}h1{font-size:28px}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">RESEARCH / LITERATURE EXPLORER</div>
+<h1>Explore your search</h1><p id="query"></p><div id="status" class="warning"></div>
+<div class="cards" id="cards"></div>
+<div class="panel filters">
+<label>Find in title or abstract<input id="text-filter" type="search" placeholder="Filter these results…"></label>
+<label>Journal<select id="journal-filter"><option value="">All journals</option></select></label>
+<label>Year<select id="year-filter"><option value="">All years</option></select></label>
+<label>Article type<select id="type-filter"><option value="">All types</option></select></label>
+<button id="reset">Reset filters</button><button id="export" class="primary">Export filtered JSON</button>
+</div>
+<div class="grid">
+<section class="panel"><div class="row-head"><h2>Journals</h2><label>Sort journals<select id="journal-sort"><option value="count">Paper count ↓</option><option value="impact">Impact factor ↓</option><option value="name">Journal name</option></select></label></div>
+<p id="metrics-note" class="muted"></p><div id="journals" class="chart"></div></section>
+<section class="panel"><h2>Publications by year</h2><div id="years" class="chart"></div></section>
+</div>
+<section class="panel" style="margin:16px 0"><details><summary>Journal impact factors and sources</summary><p class="muted">One row per journal in the current filters. Unknown values remain unavailable.</p><div class="table-wrap"><table><thead><tr><th>Journal</th><th>Papers</th><th>Impact factor</th><th>Metric year</th><th>Source / checked</th><th>Notes</th></tr></thead><tbody id="metric-journals"></tbody></table></div></details></section>
+<div class="grid">
+<section class="panel"><h2>Article types</h2><p class="muted">A paper can have more than one type.</p><div id="types" class="chart"></div></section>
+<section class="panel"><h2>Metadata coverage</h2><div id="coverage"></div></section>
+</div>
+<section class="panel"><div class="row-head"><h2 id="results-title">Papers</h2><label>Sort papers<select id="paper-sort"><option value="relevance">Database relevance</option><option value="search">Original search order</option><option value="impact">Impact factor ↓</option><option value="journal_count">Journal paper count ↓</option><option value="year">Newest year</option><option value="citations">Citation count ↓</option><option value="title">Title A–Z</option></select></label></div>
+<p id="ranking-note" class="muted"></p>
+<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Paper</th><th>Journal / impact factor</th><th>Year</th><th>Citations</th><th>Identifiers</th></tr></thead><tbody id="papers"></tbody></table></div>
+<div class="pager"><button id="previous">Previous</button><span id="page-label"></span><button id="next">Next</button></div></section>
+<section class="panel" style="margin-top:16px"><h2>About these results</h2><ul id="notes"></ul></section>
+</main>
+<script id="report-data" type="application/json">__REPORT_DATA__</script>
+<script>
+'use strict';
+const report=JSON.parse(document.getElementById('report-data').textContent);
+const $=id=>document.getElementById(id), papers=report.papers, size=25;
+let currentPage=0, filtered=[];
+function element(tag,text,className){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;}
+function option(select,value,text){const node=element('option',text);node.value=value;select.append(node);}
+function countValues(rows,key){const counts=new Map();for(const p of rows){for(const v of (key==='publication_types'?(p[key]||[]):[String(p[key]||'Unknown')]))counts.set(v,(counts.get(v)||0)+1);}return counts;}
+function groupJournals(rows){const groups=new Map();for(const p of rows){const name=p.journal_group||p.journal||'Unknown journal';if(!groups.has(name))groups.set(name,{name,count:0,metric:p.journal_metric,reference:p.journal_metric_reference||p.journal_metric,status:p.journal_metric_status,note:p.journal_metric_note});groups.get(name).count++;}return [...groups.values()];}
+function descending(a,b){const av=Number(a),bv=Number(b),missingA=a===null||a===undefined||a===''||!Number.isFinite(av),missingB=b===null||b===undefined||b===''||!Number.isFinite(bv);if(missingA!==missingB)return missingA?1:-1;return missingA?0:bv-av;}
+function bars(id,rows,onSelect){const target=$(id);target.replaceChildren();if(!rows.length){target.append(element('p','No results match these filters.','empty'));return;}const max=Math.max(...rows.map(x=>x.value),1);for(const row of rows){const node=element('div',undefined,'bar-row'),label=element(onSelect?'button':'span',row.name,'bar-label');if(onSelect)label.addEventListener('click',()=>onSelect(row.name));const track=element('div',undefined,'bar-track'),fill=element('div',undefined,'bar-fill');fill.style.width=(100*row.value/max)+'%';track.append(fill);node.append(label,track,element('span',row.label??String(row.value),'bar-value'));target.append(node);}}
+function safeLink(url,label){try{const parsed=new URL(url);if(!['https:','http:'].includes(parsed.protocol)||parsed.username||parsed.password)return element('span',label);const a=element('a',label);a.href=parsed.href;a.target='_blank';a.rel='noopener noreferrer';return a;}catch{return element('span',label);}}
+function metricSource(reference){const node=element('div');if(reference){const labels={publisher:'Publisher-confirmed',public_jcr_mirror:'Public JCR copy',missing_metadata:'Missing journal metadata'};node.append(safeLink(reference.source,labels[reference.source_kind]||'Metric source'));if(reference.retrieved_at)node.append(element('div','Checked '+reference.retrieved_at,'muted'));}else node.append(element('span','No matching metric source','muted'));return node;}
+function filters(){return papers.filter(p=>(!$('journal-filter').value||p.journal_group===$('journal-filter').value)&&(!$('year-filter').value||String(p.year||'Unknown')===$('year-filter').value)&&(!$('type-filter').value||(p.publication_types||[]).includes($('type-filter').value))&&((p.title||'')+' '+(p.abstract||'')).toLocaleLowerCase().includes($('text-filter').value.toLocaleLowerCase()));}
+function render(){filtered=filters();const journals=groupJournals(filtered),counts=new Map(journals.map(j=>[j.name,j.count]));const sort=$('journal-sort').value;journals.sort((a,b)=>(sort==='impact'?descending(a.metric?.impact_factor,b.metric?.impact_factor):sort==='count'?b.count-a.count:0)||a.name.localeCompare(b.name));
+bars('journals',journals.map(j=>({name:j.name,value:j.count,label:j.count+' · IF '+(j.metric?.impact_factor??'N/A')})),name=>{$('journal-filter').value=name;currentPage=0;render();});
+$('metric-journals').replaceChildren();for(const j of journals){const row=element('tr'),source=element('td');source.append(metricSource(j.reference));row.append(element('td',j.name),element('td',String(j.count)),element('td',String(j.metric?.impact_factor??'Unavailable')),element('td',String(j.reference?.year??'—')),source,element('td',j.note||j.reference?.notes||''));$('metric-journals').append(row);}
+bars('years',[...countValues(filtered,'year')].sort((a,b)=>descending(a[0],b[0])).map(([name,value])=>({name,value})),year=>{$('year-filter').value=year;currentPage=0;render();});
+bars('types',[...countValues(filtered,'publication_types')].sort((a,b)=>b[1]-a[1]).map(([name,value])=>({name,value})),name=>{$('type-filter').value=name;currentPage=0;render();});
+const total=filtered.length,abstracts=filtered.filter(p=>p.abstract).length,dois=filtered.filter(p=>p.doi).length,metrics=filtered.filter(p=>p.journal_metric).length;
+$('cards').replaceChildren();for(const [label,value] of [['Papers',total],['Journals',journals.length],['With abstracts',abstracts],['With DOI',dois],['With impact factor',metrics]]){const card=element('div',undefined,'card');card.append(element('span',label,'muted'),element('strong',String(value)));$('cards').append(card);}
+bars('coverage',[{name:'Abstract',value:abstracts},{name:'DOI',value:dois},{name:'Journal',value:filtered.filter(p=>p.journal).length},{name:'Impact factor',value:metrics},{name:'Citation count',value:filtered.filter(p=>p.citation_count!==null&&p.citation_count!==undefined).length}].map(x=>({...x,label:x.value+'/'+total})));
+const mode=$('paper-sort').value;filtered.sort((a,b)=>{let value=0;if(mode==='relevance'||mode==='search'){const key=mode==='relevance'?'relevance_rank':'search_rank';value=(a[key]??Infinity)-(b[key]??Infinity);}else if(mode==='impact')value=descending(a.journal_metric?.impact_factor,b.journal_metric?.impact_factor);else if(mode==='journal_count')value=counts.get(b.journal_group)-counts.get(a.journal_group);else if(mode==='year')value=descending(a.year,b.year);else if(mode==='citations')value=descending(a.citation_count,b.citation_count);else value=(a.title||'').localeCompare(b.title||'');return value||((a.search_rank??Infinity)-(b.search_rank??Infinity))||a.id-b.id;});
+currentPage=Math.min(currentPage,Math.max(0,Math.ceil(total/size)-1));$('papers').replaceChildren();for(const p of filtered.slice(currentPage*size,(currentPage+1)*size)){const tr=element('tr'),title=element('td',undefined,'title');title.append(safeLink(p.article_url||(p.doi?'https://doi.org/'+p.doi:''),p.title||'Untitled paper'));title.append(element('div',p.authors||'Authors unavailable','muted'));if(p.abstract){const details=element('details');details.append(element('summary','Read abstract'),element('p',p.abstract));title.append(details);}else title.append(element('div','Abstract unavailable','muted'));if(p.publication_types?.length)title.append(element('small',p.publication_types.join(' · ')));
+const journal=element('td',undefined,'journal');journal.append(element('div',p.journal_group));journal.append(element('strong','IF '+(p.journal_metric?.impact_factor??'Unavailable')));if(p.journal_metric)journal.append(element('div',p.journal_metric.year+' metric year','muted'));journal.append(metricSource(p.journal_metric_reference||p.journal_metric));if(!p.journal_metric&&p.journal_metric_note)journal.append(element('small',p.journal_metric_note));
+const ids=element('td');if(p.doi)ids.append(safeLink('https://doi.org/'+p.doi,'DOI: '+p.doi),element('br'));if(p.pmid)ids.append(safeLink('https://pubmed.ncbi.nlm.nih.gov/'+p.pmid+'/','PMID: '+p.pmid));tr.append(element('td',p.relevance_rank===null?'—':String(p.relevance_rank)),title,journal,element('td',p.year||'—'),element('td',String(p.citation_count??'—')),ids);$('papers').append(tr);}
+if(!total){const tr=element('tr'),td=element('td','No papers match these filters.','empty');td.colSpan=6;tr.append(td);$('papers').append(tr);}
+$('results-title').textContent='Papers · '+total;$('page-label').textContent=total?'Page '+(currentPage+1)+' of '+Math.ceil(total/size):'0 results';$('previous').disabled=currentPage===0;$('next').disabled=(currentPage+1)*size>=total;
+}
+$('query').textContent=report.search.query;$('query').append(element('span',' · '+report.search.source+' · '+(report.search.sort_order||'original order')+' · '+report.search.started,'muted'));
+$('status').textContent='Search '+report.search.id+': '+report.search.status+'. '+papers.length+' unique papers retrieved; '+(report.search.total??'unknown')+' database hits.'+(report.search.error?' '+report.search.error:'');
+$('metrics-note').textContent=report.journal_metrics.year?'Impact factors: '+report.journal_metrics.year+' metric year. Matched '+report.journal_metrics.matched_journals+' of '+report.statistics.journal_count+' journals ('+report.journal_metrics.matched_papers+' of '+papers.length+' papers). Bars show paper counts. Values from publisher pages and public JCR copies are labeled separately; see the source table below.':'No impact-factor table supplied. IF sorting places unavailable journals after known values. Add a metrics CSV when generating this report.';
+if(report.journal_metrics.matched_papers)$('journal-sort').value='impact';
+$('ranking-note').textContent=report.search.sort_order==='relevance'?'Rank is the '+report.search.source+' relevance position for this query. Lower ranks appear first. Citation counts are available only when supplied by the source.':'Relevance is unavailable for this saved search. Run a new search with relevance ordering to obtain database ranks.';
+if(report.search.sort_order!=='relevance'){$('paper-sort').value='search';$('paper-sort').querySelector('option[value="relevance"]').disabled=true;}
+for(const name of [...new Set(papers.map(p=>p.journal_group))].sort())option($('journal-filter'),name,name);
+for(const year of [...countValues(papers,'year').keys()].sort((a,b)=>descending(a,b)))option($('year-filter'),year,year);
+for(const type of [...countValues(papers,'publication_types').keys()].sort())option($('type-filter'),type,type);
+for(const note of report.notes)$('notes').append(element('li',note));
+for(const id of ['text-filter','journal-filter','year-filter','type-filter'])$(id).addEventListener(id==='text-filter'?'input':'change',()=>{currentPage=0;render();});
+for(const id of ['journal-sort','paper-sort'])$(id).addEventListener('change',()=>{currentPage=0;render();});
+$('reset').addEventListener('click',()=>{for(const id of ['text-filter','journal-filter','year-filter','type-filter'])$(id).value='';currentPage=0;render();});
+$('previous').addEventListener('click',()=>{currentPage--;render();});$('next').addEventListener('click',()=>{currentPage++;render();});
+$('export').addEventListener('click',()=>{const groups=groupJournals(filtered),data={...report,papers:filtered,filter:{text:$('text-filter').value,journal:$('journal-filter').value,year:$('year-filter').value,type:$('type-filter').value,sort:$('paper-sort').value},journal_metrics:{...report.journal_metrics,matched_papers:filtered.filter(p=>p.journal_metric).length,matched_journals:groups.filter(j=>j.metric).length,source_kind_counts:groups.filter(j=>j.metric).reduce((counts,j)=>{const kind=j.metric.source_kind||'supplied';counts[kind]=(counts[kind]||0)+1;return counts;},{})},statistics:{paper_count:filtered.length,journal_count:groups.length,abstract_count:filtered.filter(p=>p.abstract).length,doi_count:filtered.filter(p=>p.doi).length,journal_metadata_count:filtered.filter(p=>p.journal).length,citation_metadata_count:filtered.filter(p=>p.citation_count!==null&&p.citation_count!==undefined).length,journals:groups.map(j=>({journal:j.name,paper_count:j.count,metric:j.metric,metric_reference:j.reference,metric_status:j.status,metric_note:j.note})),years:Object.fromEntries(countValues(filtered,'year')),publication_types:Object.fromEntries(countValues(filtered,'publication_types'))}};const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=element('a');a.href=url;a.download='search-'+report.search.id+'-filtered.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+render();
+</script><script>__PRACTICAL_SCRIPT__</script></body></html>

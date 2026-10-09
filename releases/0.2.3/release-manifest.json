@@ -1,0 +1,22 @@
+{
+  "name": "mechanosensor-literature",
+  "version": "0.2.3",
+  "license": "MIT",
+  "artifacts": [
+    {
+      "file": "mechanosensor_literature-0.2.3-py3-none-any.whl",
+      "bytes": 62263,
+      "sha256": "f72627e7ae16ab963dc4e527811d6cee5dc96ab1b240d33c1d014d98ae33cab4"
+    },
+    {
+      "file": "mechanosensor_literature-0.2.3.tar.gz",
+      "bytes": 91827,
+      "sha256": "e16b46bd7d589c27116b45f6e437641fc094128aed25f0c99dbdd5b3f97a3407"
+    },
+    {
+      "file": "mechanosensor-literature-0.2.3-windows-x64.zip",
+      "bytes": 23122865,
+      "sha256": "ca44c349ff72952ade484825c23328ffc185fdabf7ed5648aa94a7cec6ab5171"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+# Build tools only; the installed literature package has no third-party dependencies.
+build>=1,<2
+setuptools>=77
+wheel
+pyinstaller>=6,<7
+twine>=6,<7

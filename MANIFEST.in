@@ -1,0 +1,21 @@
+include README.md DISTRIBUTION.md VALIDATION.md LICENSE
+include literature-config.example.json
+include requirements-release.txt
+recursive-include literature *.py *.html *.js
+recursive-include scripts *.py
+recursive-include tests *.py
+recursive-include examples *.json *.txt *.csv
+prune queries
+prune dataset
+prune skills
+prune .literature
+prune outputs
+prune downloads
+prune tmp
+prune build
+prune dist
+prune github-ready
+prune .venv
+prune .venv-build
+global-exclude *.sqlite* *.db *.pdf desktop-settings.json journal-metrics.csv journal-metrics-provenance.json
+global-exclude __pycache__ *.py[cod]

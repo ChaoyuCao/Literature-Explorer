@@ -1,0 +1,16 @@
+[
+  {
+    "name": "example-pubmed",
+    "source": "pubmed",
+    "query": "ion channel electrophysiology",
+    "limit": 10,
+    "sort": "relevance"
+  },
+  {
+    "name": "example-europepmc",
+    "source": "europepmc",
+    "query": "ion channel electrophysiology",
+    "limit": 10,
+    "sort": "relevance"
+  }
+]

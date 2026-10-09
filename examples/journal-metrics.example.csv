@@ -1,0 +1,3 @@
+journal,issn,impact_factor,year,source,status,notes
+Synthetic Journal,1234-5678,7.5,2025,https://example.org/synthetic-metric,available,Fictional example for the CSV format; replace with sourced journal data.
+Another Synthetic Journal,,,,https://example.org/synthetic-metric,,Blank metric rows are skipped.

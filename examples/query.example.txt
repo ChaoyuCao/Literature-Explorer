@@ -1,0 +1,1 @@
+("ion channel"[Title/Abstract]) AND electrophysiology[Title/Abstract]
