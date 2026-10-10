@@ -33,7 +33,7 @@ def cache_fixture(state):
     db = sqlite3.connect(cache / 'metadata-cache.sqlite3')
     db.execute('CREATE TABLE responses(key TEXT PRIMARY KEY, fetched REAL, body BLOB)')
     def response(url, params, body):
-        target = url + '?' + urlencode(sorted(params.items()))
+        target = url + ('?' + urlencode(sorted(params.items())) if params else '')
         value = body.encode() if isinstance(body, str) else json.dumps(body).encode()
         db.execute('INSERT INTO responses VALUES(?,?,?)', (hashlib.sha256(target.encode()).hexdigest(), time.time(), value))
     ncbi = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils'
@@ -45,6 +45,15 @@ def cache_fixture(state):
              {'hitCount': 1, 'resultList': {'result': [{'id': '90000001', 'source': 'MED', 'pmid': '90000001', 'doi': '10.0000/distribution.fixture', 'title': 'Synthetic release fixture', 'abstractText': 'Synthetic response data for release verification only.', 'citedByCount': 3}]}})
     response('https://api.crossref.org/works', {'query.bibliographic': 'RELEASE_TEST_FIXTURE', 'sort': 'score', 'order': 'desc', 'filter': 'type:journal-article', 'rows': 1, 'cursor': '*'},
              {'message': {'total-results': 1, 'items': [{'DOI': '10.0000/distribution.fixture', 'title': ['Synthetic release fixture'], 'container-title': ['Synthetic Journal'], 'type': 'journal-article', 'is-referenced-by-count': 77}]}})
+    response('https://api.crossref.org/works/10.0000%2Fdistribution.fixture', {},
+             {'message': {'DOI': '10.0000/distribution.fixture', 'reference-count': 1, 'reference': [{'DOI': '10.0000/cited.fixture', 'unstructured': 'Reference JSON only fixture'}]}})
+    response('https://www.ebi.ac.uk/europepmc/webservices/rest/MED/90000001/references', {'format': 'json', 'page': 1, 'pageSize': 100},
+             {'hitCount': 1, 'referenceList': {'reference': [{'doi': '10.0000/cited.fixture', 'title': 'Cited synthetic paper'}]}})
+    response('https://www.ebi.ac.uk/europepmc/webservices/rest/MED/90000001/citations', {'format': 'json', 'page': 1, 'pageSize': 100},
+             {'hitCount': 1, 'citationList': {'citation': [{'doi': '10.0000/citing.fixture', 'title': 'Citing synthetic paper'}]}})
+    for identifier, title in [('cited.fixture', 'Cited synthetic paper'), ('citing.fixture', 'Citing synthetic paper')]:
+        response('https://api.crossref.org/works/10.0000%2F' + identifier, {},
+                 {'message': {'DOI': '10.0000/' + identifier, 'title': [title], 'type': 'journal-article'}})
     db.commit()
     db.close()
 
@@ -61,6 +70,23 @@ def exercise(command, cwd, version):
     base = [*command, '--state', state, '--offline', '--quiet']
     result = json.loads(run([*base, 'search', '--sources', 'pubmed', 'europepmc', 'crossref', '--query', 'RELEASE_TEST_FIXTURE', '--limit', 1, '--journal-metrics', metrics, '--output', output], cwd))
     assert result['status'] == 'complete'
+    analysis = json.loads(run([*base, 'references', '--report', output, '--citation-network', '--no-journal-metrics', '--output', cwd/'analyzed.json'], cwd))
+    assert analysis['reference_status'] == 'complete'
+    assert 'Reference JSON only fixture' in Path(analysis['references']).read_text(encoding='utf-8')
+    assert 'Reference JSON only fixture' not in Path(analysis['dashboard']).read_text(encoding='utf-8')
+    evidence = json.loads(Path(analysis['references']).read_text(encoding='utf-8'))
+    assert evidence['schema_version'] == 2
+    assert evidence['coverage']['raw_observations'] == 2
+    assert evidence['coverage']['resolved_distinct_publications'] == 1
+    resolved = json.loads(run([*base, 'resolve-references', '--report', analysis['json'],
+        '--references-file', analysis['references'], '--citation-network', '--no-journal-metrics',
+        '--output', cwd/'resolved.json'], cwd))
+    assert resolved['resolution_status'] == 'complete'
+    assert Path(resolved['reference_dashboard']).is_file()
+    assert json.loads(Path(resolved['publications']).read_text(encoding='utf-8'))['publications'][0]['title'] == 'Cited synthetic paper'
+    discovery = json.loads(run([*base, 'discover', '--report', output, '--direction', 'both', '--limit', 2, '--no-journal-metrics', '--output', cwd/'discovery.json'], cwd))
+    assert discovery['paper_count'] == 2
+    assert len(json.loads(Path(discovery['json']).read_text())['discovery']['links']) == 2
     data = json.loads(output.read_text(encoding='utf-8'))
     assert data['merge']['input_paper_count'] == 3
     assert data['merge']['unique_paper_count'] == 1
@@ -91,7 +117,7 @@ def exercise(command, cwd, version):
     run([*base, 'search', '--source', 'europepmc', '--query', 'UNCACHED_RELEASE_FIXTURE', '--limit', 1, '--output', cwd / 'failed.json'], cwd, expected=1)
     assert json.loads((cwd / 'failed.json').read_text(encoding='utf-8'))['search']['status'] == 'failed'
     return {'multi_source_input_records': 3, 'unique_papers': 1, 'duplicates_removed': 2,
-            'checks': ['version/help', 'offline search', 'deduplication', 'metadata/provenance', 'journal metric', 'HTML assets', 'annotations/collections', 'CSV/RIS/BibTeX exchange', 'saved search merge', 'failure exit/report']}
+            'checks': ['version/help', 'offline search', 'deduplication', 'metadata/provenance', 'journal metric', 'HTML assets', 'annotations/collections', 'CSV/RIS/BibTeX exchange', 'saved search merge', 'reference identity/evidence exports', 'citation network', 'one-hop discovery', 'failure exit/report']}
 
 
 def main():

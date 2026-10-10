@@ -2,6 +2,7 @@
 import json
 import hashlib
 import sqlite3
+import re
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -9,6 +10,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
+from . import __version__
 
 
 class APIError(RuntimeError):
@@ -27,6 +29,7 @@ class HTTP:
                  email='', ncbi_api_key='', progress=None):
         self.timeout, self.retries = timeout, retries
         self.last_request = {}
+        self.rate_intervals = {}
         self.cache_ttl, self.offline = cache_ttl, offline
         self.email, self.ncbi_api_key, self.progress = email, ncbi_api_key, progress
         self.cache = None
@@ -70,15 +73,27 @@ class HTTP:
         if self.offline:
             raise APIError('Offline mode: this metadata request is not in the cache.')
         host = urlsplit(url).hostname
+        request_kind = 'list' if host == 'api.crossref.org' and not re.search(r'/works/[^/]+', urlsplit(url).path) else 'single'
+        rate_key = (host, request_kind)
+        # Crossref's public list/search endpoints allow one request per second.
+        base_interval = 1.05 if host == 'api.crossref.org' and request_kind == 'list' and not self.email else 0.36
         for attempt in range(self.retries + 1):
             # Under the unauthenticated NCBI limit of three requests per second.
-            time.sleep(max(0, 0.36 - (time.monotonic() - self.last_request.get(host, 0))))
+            time.sleep(max(0, max(base_interval, self.rate_intervals.get(rate_key, 0)) - (time.monotonic() - self.last_request.get(host, 0))))
             self.last_request[host] = time.monotonic()
             try:
-                request = Request(target, headers={"User-Agent": "mechanosensor-literature/0.1"})
+                request = Request(target, headers={"User-Agent": "mechanosensor-literature/" + __version__})
                 self.stats['network_requests'] += 1
                 with urlopen(request, timeout=self.timeout) as response:
                     body = response.read()
+                    headers = getattr(response, 'headers', {})
+                    try:
+                        limit = float(headers.get('x-rate-limit-limit', 0))
+                        interval = float(str(headers.get('x-rate-limit-interval', '')).removesuffix('s'))
+                        if limit > 0 and interval > 0:
+                            self.rate_intervals[rate_key] = interval / limit * 1.05
+                    except (ValueError, TypeError):
+                        pass
                 fetched = time.time()
                 if self.cache:
                     with self.cache:

@@ -13,6 +13,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from . import __version__
+from .progress import parse_progress
 from .reports import discover_metrics, enrich_report, load_metrics, write_report
 from .sources import search_query
 
@@ -28,7 +29,7 @@ def enable_dpi_awareness():
             pass
 
 
-def search_arguments(query, sources, limit, sort, filters, output, metrics=''):
+def search_arguments(query, sources, limit, sort, filters, output, metrics='', references=False, network=False):
     query = query.strip()
     if not query:
         raise ValueError('Enter keywords or a database query.')
@@ -57,6 +58,10 @@ def search_arguments(query, sources, limit, sort, filters, output, metrics=''):
         arguments.extend(['--journal-metrics', metrics])
     else:
         arguments.append('--no-journal-metrics')
+    if references:
+        arguments.append('--retrieve-references')
+    if network:
+        arguments.append('--citation-network')
     return arguments
 
 
@@ -98,8 +103,13 @@ def run_engine(arguments, workspace, events, cancel):
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
                 messages = []
                 for line in process.stderr:
-                    messages.append(line.rstrip())
-                    events.put(('progress', line.rstrip()))
+                    message = line.rstrip()
+                    counts = parse_progress(message)
+                    if counts is not None:
+                        events.put(('counts', counts))
+                    else:
+                        messages.append(message)
+                        events.put(('progress', message))
                 process.stderr.close()
                 code = process.wait()
             raw = output.read_text(encoding='utf-8').strip()
@@ -152,6 +162,12 @@ class DesktopApp:
         self.sources = {key: tk.BooleanVar(value=key in preferences.get('sources', ['pubmed', 'europepmc'])) for key in DATABASES}
         self.offline = tk.BooleanVar(value=False)
         self.auto_open = tk.BooleanVar(value=True)
+        self.retrieve_references = tk.BooleanVar(value=False)
+        self.build_network = tk.BooleanVar(value=False)
+        self.analysis_seed = tk.StringVar(value='Latest report')
+        self.discovery_direction = tk.StringVar(value='references')
+        self.discovery_limit = tk.StringVar(value='100')
+        self.last_analysis_arguments = None
         self.status = tk.StringVar(value='Ready to search')
         self.last_result = None
         root.title('Literature Explorer · ' + __version__)
@@ -186,12 +202,13 @@ class DesktopApp:
         ttk.Button(workspace_row, text='Choose folder', command=self.choose_workspace).pack(side='left', padx=8)
         self.notebook = ttk.Notebook(body)
         self.notebook.pack(fill='both', expand=True)
-        self.search_tab, self.library_tab, self.history_tab = [ttk.Frame(self.notebook, padding=16) for _ in range(3)]
-        for frame, label in [(self.search_tab, 'Search'), (self.library_tab, 'Paper library'), (self.history_tab, 'Search history')]:
+        self.search_tab, self.library_tab, self.history_tab, self.analysis_tab = [ttk.Frame(self.notebook, padding=16) for _ in range(4)]
+        for frame, label in [(self.search_tab, 'Search'), (self.library_tab, 'Paper library'), (self.history_tab, 'Search history'), (self.analysis_tab, 'Citation analysis')]:
             self.notebook.add(frame, text=label)
         self._search_controls()
         self._library_controls()
         self._history_controls()
+        self._analysis_controls()
         self.workspace.trace_add('write', self._workspace_changed)
         self.metrics.trace_add('write', self._metrics_changed)
         if self._metrics_automatic or not self.metrics.get() or not Path(self.metrics.get()).is_file():
@@ -201,10 +218,23 @@ class DesktopApp:
         self.notebook.pack_forget()
         footer.pack(side='bottom', fill='x', pady=(12, 0))
         self.notebook.pack(fill='both', expand=True)
-        ttk.Label(footer, textvariable=self.status).pack(side='left', fill='x', expand=True)
-        self.progress = ttk.Progressbar(footer, mode='indeterminate', length=160)
+        self.analysis_progress = ttk.Frame(footer)
+        self.analysis_progress.pack(fill='x', pady=(0, 8))
+        self.progress_rows, self.progress_bars, self.progress_labels = {}, {}, {}
+        self.analysis_counts = {}
+        for stage in ('references', 'citations', 'resolution', 'network'):
+            row = ttk.Frame(self.analysis_progress)
+            label = tk.StringVar()
+            ttk.Label(row, textvariable=label).pack(anchor='w')
+            bar = ttk.Progressbar(row, mode='determinate', maximum=1)
+            bar.pack(fill='x', pady=(3, 6))
+            self.progress_rows[stage], self.progress_bars[stage], self.progress_labels[stage] = row, bar, label
+        status_row = ttk.Frame(footer)
+        status_row.pack(fill='x')
+        ttk.Label(status_row, textvariable=self.status).pack(side='left', fill='x', expand=True)
+        self.progress = ttk.Progressbar(status_row, mode='indeterminate', length=160)
         self.progress.pack(side='right')
-        self.stop_button = ttk.Button(footer, text='Stop', command=self.stop, state='disabled')
+        self.stop_button = ttk.Button(status_row, text='Stop', command=self.stop, state='disabled')
         self.stop_button.pack(side='right', padx=10)
         root.protocol('WM_DELETE_WINDOW', self.close)
         root.report_callback_exception = lambda kind,error,trace: messagebox.showerror('Literature Explorer', str(error))
@@ -268,6 +298,10 @@ class DesktopApp:
         ttk.Button(actions, text='Open existing report', command=self.open_existing).pack(side='left')
         ttk.Checkbutton(actions, text='Open report when ready', variable=self.auto_open).pack(side='right')
         ttk.Checkbutton(actions, text='Use cache only', variable=self.offline).pack(side='right', padx=10)
+        analysis_options = ttk.Frame(frame)
+        analysis_options.pack(fill='x', before=filters, pady=(0, 8))
+        ttk.Checkbutton(analysis_options, text='Retrieve reference lists (separate JSON)', variable=self.retrieve_references).pack(side='left')
+        ttk.Checkbutton(analysis_options, text='Build citation network (requires references)', variable=self.build_network).pack(side='left', padx=12)
         actions.pack(before=filters)
         self.filter_button = ttk.Button(frame, text='Show optional filters', command=self.toggle_filters)
         self.filter_button.pack(fill='x', before=filters, pady=(0,8))
@@ -330,6 +364,112 @@ class DesktopApp:
         ttk.Button(actions, text='Build report / merge selected searches', command=self.report_history).pack(side='left')
         ttk.Button(actions, text='Resume selected search', command=self.resume_search).pack(side='left', padx=8)
         ttk.Label(self.history_tab, text='Select several rows to combine their results. Each database keeps its own search and rank.', style='Hint.TLabel').pack(anchor='w', pady=(10, 0))
+
+    def _analysis_controls(self):
+        frame = self.analysis_tab
+        ttk.Label(frame, text='References and citation discovery', font=('Segoe UI', 14, 'bold')).pack(anchor='w', pady=(0, 10))
+        ttk.Label(frame, text='Retrieve lists first, then optionally resolve publication identities and metadata.\nA separate reference browser shows consolidated publications, original evidence, and matches for review.', wraplength=780).pack(anchor='w')
+        row = ttk.Frame(frame)
+        row.pack(fill='x', pady=18)
+        ttk.Label(row, text='Seed papers').pack(side='left', padx=(0, 10))
+        ttk.Combobox(row, textvariable=self.analysis_seed, values=['Latest report', 'Selected library papers', 'Selected searches'], state='readonly', width=25).pack(side='left')
+        ttk.Button(row, text='Open a report', command=self.open_existing).pack(side='left', padx=10)
+        row = ttk.Frame(frame)
+        row.pack(fill='x')
+        ttk.Button(row, text='Retrieve reference lists', command=self.analyze_references).pack(side='left')
+        ttk.Checkbutton(row, text='Build citation network', variable=self.build_network).pack(side='left', padx=12)
+        row = ttk.Frame(frame)
+        row.pack(fill='x', pady=8)
+        ttk.Button(row, text='Resolve / enrich retrieved references', command=self.resolve_existing_references).pack(side='left')
+        ttk.Button(row, text='Browse references', command=self.browse_references).pack(side='left', padx=12)
+        ttk.Label(frame, text='Discovery follows one citation step. The limit counts unique discovered papers, excluding seeds.\nResults are saved in a new report; your keyword search is preserved.', wraplength=780).pack(anchor='w', pady=(22, 10))
+        row = ttk.Frame(frame)
+        row.pack(fill='x')
+        ttk.Label(row, text='Direction').pack(side='left', padx=(0, 10))
+        ttk.Combobox(row, textvariable=self.discovery_direction, values=['references', 'citations', 'both'], state='readonly', width=15).pack(side='left')
+        ttk.Label(row, text='New-paper limit').pack(side='left', padx=(18, 8))
+        ttk.Entry(row, textvariable=self.discovery_limit, width=8).pack(side='left')
+        ttk.Button(row, text='Discover related papers', command=self.start_discovery).pack(side='left', padx=12)
+        ttk.Button(frame, text='Resume last analysis / discovery', command=self.resume_analysis).pack(anchor='w', pady=18)
+        ttk.Label(frame, text='Availability varies by provider. Unresolved citation text is retained in JSON but is not automatically added to the library.\nUse cache only to repeat an analysis without network requests.', wraplength=780, style='Hint.TLabel').pack(anchor='w')
+
+    def _analysis_selection(self):
+        mode = self.analysis_seed.get()
+        if mode == 'Selected library papers':
+            selected = self.library_table.selection()
+            if not selected:
+                raise ValueError('Select seed papers in the Paper library tab first.')
+            return ['--library', '--ids', *selected]
+        if mode == 'Selected searches':
+            selected = self.history_table.selection()
+            if not selected:
+                raise ValueError('Select seed searches in the Search history tab first.')
+            return ['--search-ids', *selected]
+        if not self.last_report or not self.last_report.with_suffix('.json').is_file():
+            raise ValueError('Open or create a JSON/HTML report first.')
+        return ['--report', str(self.last_report.with_suffix('.json'))]
+
+    def analyze_references(self):
+        if self.busy:
+            return
+        try:
+            args = ['references', *self._analysis_selection(), '--output', str(self._output('references')), *self._metric_arguments()]
+            if self.build_network.get():
+                args.append('--citation-network')
+            self.last_analysis_arguments = args
+            self._launch(args, self._report_done)
+        except (ValueError, OSError) as exc:
+            messagebox.showerror('Check analysis settings', str(exc))
+
+    def resolve_existing_references(self):
+        if self.busy:
+            return
+        try:
+            reference_file = (self.last_result or {}).get('references')
+            if not reference_file:
+                reference_file = filedialog.askopenfilename(title='Choose reference observations', filetypes=[('Reference JSON', '*.json')])
+            if not reference_file:
+                return
+            args = ['resolve-references', *self._analysis_selection(), '--references-file', reference_file,
+                    '--output', str(self._output('resolved-references')), *self._metric_arguments()]
+            if self.build_network.get():
+                args.append('--citation-network')
+            self.last_analysis_arguments = args
+            self._launch(args, self._report_done)
+        except (ValueError, OSError) as exc:
+            messagebox.showerror('Check analysis settings', str(exc))
+
+    def browse_references(self):
+        path = (self.last_result or {}).get('reference_dashboard')
+        if not path and self.last_report:
+            path = self.last_report.with_suffix('.references.html')
+        if path and Path(path).is_file():
+            webbrowser.open(Path(path).resolve().as_uri())
+        else:
+            messagebox.showinfo('References', 'Retrieve reference lists or open an analyzed report first.')
+
+    def start_discovery(self):
+        if self.busy:
+            return
+        try:
+            limit = int(self.discovery_limit.get())
+            if limit < 1:
+                raise ValueError('The discovery limit must be positive.')
+            args = ['discover', *self._analysis_selection(), '--direction', self.discovery_direction.get(), '--limit', str(limit),
+                    '--output', str(self._output('discovery')), *self._metric_arguments()]
+            reference_file = (self.last_result or {}).get('references')
+            if self.analysis_seed.get() == 'Latest report' and reference_file and self.discovery_direction.get() in ('references', 'both'):
+                args.extend(['--references-file', reference_file])
+            self.last_analysis_arguments = args
+            self._launch(args, self._report_done)
+        except (ValueError, OSError) as exc:
+            messagebox.showerror('Check discovery settings', str(exc))
+
+    def resume_analysis(self):
+        if not self.busy and self.last_analysis_arguments:
+            self._launch(self.last_analysis_arguments, self._report_done)
+        elif not self.busy:
+            messagebox.showinfo('No analysis to resume', 'Start reference analysis or discovery first. Repeating it resumes its saved checkpoint.')
 
     def choose_workspace(self):
         if self.busy:
@@ -426,7 +566,14 @@ class DesktopApp:
         try:
             args = search_arguments(self.query.get('1.0', 'end'), [key for key,value in self.sources.items() if value.get()],
                 self.limit.get(), self.sort.get(), {key: value.get() for key,value in self.filters.items() if value.get().strip()},
-                self._output('search'), self.metrics.get())
+                self._output('search'), self.metrics.get(), self.retrieve_references.get(), self.build_network.get())
+            if self.retrieve_references.get() or self.build_network.get():
+                # Resume references against saved results, without repeating the keyword search.
+                output = args[args.index('--output') + 1]
+                self.last_analysis_arguments = ['references', '--report', output, '--output', str(Path(output).with_name(Path(output).stem + '-analysis.json')),
+                                               '--references-output', str(Path(output).with_suffix('.references.json')), *self._metric_arguments()]
+                if self.build_network.get():
+                    self.last_analysis_arguments.append('--citation-network')
             self._launch(args, self._report_done)
         except (ValueError, OSError) as exc:
             messagebox.showerror('Check search settings', str(exc))
@@ -451,6 +598,11 @@ class DesktopApp:
         self.apply_metrics_button.configure(state='disabled')
         self.workspace_entry.configure(state='disabled')
         self.stop_button.configure(state='normal')
+        self.analysis_counts.clear()
+        for stage, row in self.progress_rows.items():
+            row.pack_forget()
+            self.progress_bars[stage].configure(value=0, maximum=1)
+        self.progress.configure(mode='indeterminate', value=0)
         self.progress.start(12)
         self._log('Starting ' + args[0] + '…')
         if report_file:
@@ -473,6 +625,8 @@ class DesktopApp:
                 break
             if event[0] == 'progress':
                 self._log(event[1])
+            elif event[0] == 'counts':
+                self._analysis_progress(event[1])
             else:
                 self.busy = False
                 self.progress.stop()
@@ -498,13 +652,50 @@ class DesktopApp:
                     return
         self.poll_id = self.root.after(100, self._poll)
 
+    def _analysis_progress(self, counts):
+        stage = counts['stage']
+        done, total = counts['completed'], counts['total']
+        self.analysis_counts[stage] = counts
+        maximum = max(1, total)
+        value = done if total else int(stage != 'network' or counts.get('status') == 'complete')
+        percent = 100 * value // maximum
+        self.progress_rows[stage].pack(fill='x')
+        self.progress_bars[stage].configure(maximum=maximum, value=value)
+        if stage == 'network':
+            label = (f'Citation network: {done:,}/{total:,} papers processed ({percent:.0f}%)'
+                     f' · {counts.get("edges", 0):,} links'
+                     + (' · Complete' if counts.get('status') == 'complete' else ''))
+        elif stage == 'resolution':
+            label = (f'Reference resolution: {done:,}/{total:,} metadata tasks processed ({percent:.0f}%)'
+                     f' · {counts.get("resolved", 0):,} referenced publication identities')
+        else:
+            label = (f'{stage.title()}: {done:,}/{total:,} papers processed ({percent:.0f}%)'
+                     f' · {counts.get("with_references", 0):,} with lists'
+                     f' · {counts.get("unavailable", 0):,} unavailable'
+                     f' · {counts.get("empty", 0):,} empty'
+                     f' · {counts.get("issues", 0):,} partial/errors')
+        self.progress_labels[stage].set(label)
+        self.progress.stop()
+        self.progress.configure(mode='determinate', maximum=maximum, value=value)
+        if self.stop_button['state'] != 'disabled':
+            self.status.set('Building citation network…' if stage == 'network' else f'Retrieving {stage}…')
+
     def _report_done(self, result):
         if isinstance(result, dict) and result.get('dashboard'):
             self.last_report = Path(result['dashboard'])
             self.open_button.configure(state='normal')
             self._log(str(result.get('paper_count', '?')) + ' unique papers. JSON and HTML saved to ' + str(self.last_report.parent))
+            for key in ('references', 'publications', 'reference_dashboard', 'network', 'discovery_checkpoint'):
+                if result.get(key):
+                    self._log(key.replace('_', ' ').title() + ': ' + str(result[key]))
             try:
                 report = json.loads(Path(result['json']).read_text(encoding='utf-8'))
+                if report.get('reference_analysis'):
+                    c = report['reference_analysis']['coverage']
+                    self._log(f"References: {c['raw_observations']:,} raw observations; {c['resolved_distinct_publications']:,} identified publications; "
+                              f"{c['unresolved_observations']:,} unresolved; {c['ambiguous_matches']:,} ambiguous; "
+                              f"{c['conflicting_observations']:,} conflicting. {c['distinct_citation_edges']:,} citation edges; "
+                              f"{c['flagged_self_links']:,} article-to-itself links flagged. Bibliography completeness is unknown.")
                 info = report['journal_metrics']
                 self._log(f"Impact factors: {info['matched_journals']} of {report['statistics']['journal_count']} journals; {info['matched_papers']} of {result['paper_count']} papers. " + (f"Metric year {info['year']}." if info['year'] else 'No CSV supplied.'))
             except (OSError, ValueError, KeyError):

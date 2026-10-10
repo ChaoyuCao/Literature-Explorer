@@ -1,16 +1,16 @@
 {
-  "version": "0.2.3",
+  "version": "0.4.0",
   "policy": "Allowlisted source, generic examples, and the latest data-free distribution. No runtime data or Git history.",
   "files": [
     {
       "file": ".gitignore",
-      "bytes": 372,
-      "sha256": "cef4a48df004c49c3d3e76dec0e390140fa92fc8f2d4ef825c94b716f5a43928"
+      "bytes": 374,
+      "sha256": "7983269954bba65e7bfdc29a44bb3dfe399a2af9b65bf63a899f90d7f110f169"
     },
     {
       "file": "DISTRIBUTION.md",
       "bytes": 4468,
-      "sha256": "1ea57615a7ad6aa98d9d3a905b05a26b61063b945eb10cc578ddb65d5b58eac3"
+      "sha256": "82f8f667a3203bb812baa60722087f236a55aa6d40eb472392c2bff549b41013"
     },
     {
       "file": "examples/batch.example.json",
@@ -35,7 +35,7 @@
     {
       "file": "literature/__init__.py",
       "bytes": 99,
-      "sha256": "52ebc71c7fbc8c0d11cb11b80d7fa761893ce1a4d21160c2c8f0f18c288c82cf"
+      "sha256": "1dcdbbca8708e80ea9c05f7327049c1011ec40fe5a8876be026b4068e6150279"
     },
     {
       "file": "literature/__main__.py",
@@ -49,8 +49,8 @@
     },
     {
       "file": "literature/cli.py",
-      "bytes": 23468,
-      "sha256": "bc23bc79889cc19547840dfe87fc1688879b51401a6992180db56e75f62b29d8"
+      "bytes": 36168,
+      "sha256": "93f6bcf367d089ae732f30ed65551121266ff451a19a7c636d0163bd84b11539"
     },
     {
       "file": "literature/collector.py",
@@ -69,8 +69,8 @@
     },
     {
       "file": "literature/explorer.js",
-      "bytes": 14837,
-      "sha256": "fc01ab94b4a24905e8b96fc3f3e3d44f09e50177c73420ee1be0ccb6859c08f3"
+      "bytes": 31979,
+      "sha256": "a33d9bf42a5c64c87d85ba9ceb8353faa8480e52ff0c332080f9b16f13cedc54"
     },
     {
       "file": "literature/formats.py",
@@ -79,23 +79,53 @@
     },
     {
       "file": "literature/gui.py",
-      "bytes": 33508,
-      "sha256": "de5ae559e384ab1ae0ec9261d5fec7e764165e9d971eb7d03dc537a2860dcffc"
+      "bytes": 45872,
+      "sha256": "16d8387d12c7408b0ede0df4de8ae48b63a380f5f61a27fd5785d4d726251be1"
     },
     {
       "file": "literature/http.py",
-      "bytes": 5497,
-      "sha256": "36d053ff997f6ce1dadbe744e48cd8ac9288afb22a5e3beeba3d2a5cdd7f24ab"
+      "bytes": 6483,
+      "sha256": "c77bb0b404cb97f4e99b054e6d0ac7ffa43c342e93758500b043e60691e46d9c"
+    },
+    {
+      "file": "literature/progress.py",
+      "bytes": 825,
+      "sha256": "eabefd7475b0a4cf3deeee5f82ca3a4a9a5e670a63bca3e08857eb719f671519"
+    },
+    {
+      "file": "literature/publications.py",
+      "bytes": 17784,
+      "sha256": "568ffae806ede8bae768b32a95698a60ae26ca26bf7c666f52adc9d731404dd7"
+    },
+    {
+      "file": "literature/reference_report.py",
+      "bytes": 8488,
+      "sha256": "74b961639da622a4d1317b7c2b685a67637432c6212f5bdd827f073a8d139fd4"
+    },
+    {
+      "file": "literature/references.py",
+      "bytes": 15761,
+      "sha256": "c5d08b57398be2824d61f23d810d4c2d016b4d366a61bfc2b8e9bf64365af8d4"
     },
     {
       "file": "literature/reports.py",
-      "bytes": 10523,
-      "sha256": "ae4f06e2ba624877ef4dd37f598f5d5a78c792ce025e6e9ab07d664b25412194"
+      "bytes": 10614,
+      "sha256": "228138a7983f2cc97a8ff664620f2a4ea54d2fe5d8d6b6df68fec576d8aa800c"
+    },
+    {
+      "file": "literature/research.py",
+      "bytes": 19782,
+      "sha256": "60c356de220c66b5ed859cd50b4c0fc73f669052b948e93c07c85a36ef744fd0"
+    },
+    {
+      "file": "literature/resolution.py",
+      "bytes": 8944,
+      "sha256": "8db6ebf77956b295c60cf5c9631f3be3531dff0816e896915ee552c3202c1c77"
     },
     {
       "file": "literature/sources.py",
-      "bytes": 16243,
-      "sha256": "06ea68cb1c590ff60faa73fac9cb4a2d735d0b4c78dd5133a598f3bb28e5abf1"
+      "bytes": 17654,
+      "sha256": "33c2882ca25c252cc7c8c20f73989d5ff533ebabf29dbd82750e3f098b6576db"
     },
     {
       "file": "literature/store.py",
@@ -119,43 +149,48 @@
     },
     {
       "file": "README.md",
-      "bytes": 10152,
-      "sha256": "7d9cf56feb9f4f3cdf972d570b1f8586a61542842e0f711b458b83e7127f3f88"
+      "bytes": 16918,
+      "sha256": "a20cf2b876f45c672538f872a555fa8c97202a6eb7c4976d584eeeb1282475c8"
     },
     {
-      "file": "releases/0.2.3/mechanosensor-literature-0.2.3-windows-x64.zip",
-      "bytes": 23122865,
-      "sha256": "ca44c349ff72952ade484825c23328ffc185fdabf7ed5648aa94a7cec6ab5171"
+      "file": "releases/0.4.0/mechanosensor-literature-0.4.0-windows-x64.zip",
+      "bytes": 23243260,
+      "sha256": "92332201b9ad280e33d64fc8c4b3021d6bfb8f056b065f8f9de351b06a5d5630"
     },
     {
-      "file": "releases/0.2.3/mechanosensor_literature-0.2.3-py3-none-any.whl",
-      "bytes": 62263,
-      "sha256": "f72627e7ae16ab963dc4e527811d6cee5dc96ab1b240d33c1d014d98ae33cab4"
+      "file": "releases/0.4.0/mechanosensor_literature-0.4.0-py3-none-any.whl",
+      "bytes": 96580,
+      "sha256": "7a0d0d57a217d64fb26b991b004e99976cdc3a1d9b81117fed758d80136d480b"
     },
     {
-      "file": "releases/0.2.3/mechanosensor_literature-0.2.3.tar.gz",
-      "bytes": 91827,
-      "sha256": "e16b46bd7d589c27116b45f6e437641fc094128aed25f0c99dbdd5b3f97a3407"
+      "file": "releases/0.4.0/mechanosensor_literature-0.4.0.tar.gz",
+      "bytes": 136370,
+      "sha256": "1f35e8514e30464e1ae62649af8ca40d9ace0f87f76d2e71e3d972bc48e41d61"
     },
     {
-      "file": "releases/0.2.3/release-manifest.json",
-      "bytes": 665,
-      "sha256": "e9b65c0218d424fb7c43697a3a48fc62b8388f62aba3c17528f3bfa54408ad2e"
+      "file": "releases/0.4.0/release-manifest.json",
+      "bytes": 666,
+      "sha256": "1ce700fa892c7975d3e94bab639cbd4a42859763f1491194e264a52ff200dc0b"
     },
     {
-      "file": "releases/0.2.3/SHA256SUMS.txt",
+      "file": "releases/0.4.0/SHA256SUMS.txt",
       "bytes": 508,
-      "sha256": "8b4cd015ffa244c1e9160d8b08e5944b139253e66bb72f4b82ded2ff741f5432"
+      "sha256": "2de19448a5cf3dbea8c3175cb9870ccbc5bc876396f5b9d23b62c756053f54f0"
     },
     {
-      "file": "releases/0.2.3/verification.json",
-      "bytes": 910,
-      "sha256": "c4f160f980355f40bbe6db7b63f18c4ed916a2e03477c07a6bea44adf58020af"
+      "file": "releases/0.4.0/verification.json",
+      "bytes": 1112,
+      "sha256": "f39c83d527e5e61b56a19eaa47ab12cebf08103267772938db7270f846fde35f"
     },
     {
       "file": "requirements-release.txt",
       "bytes": 149,
       "sha256": "4708ec67686b7c6144d7757f1cc184ba91339ff1f7a7cf730ad4d791e05936a1"
+    },
+    {
+      "file": "scripts/audit_references.py",
+      "bytes": 4153,
+      "sha256": "8e771c0498fe2cdfb772bcf056e7fa5ba7eb0ecd6386aeb8c66a7aaac0200521"
     },
     {
       "file": "scripts/build_journal_metrics.py",
@@ -184,8 +219,8 @@
     },
     {
       "file": "scripts/smoke_desktop.py",
-      "bytes": 8399,
-      "sha256": "f2dc73ad82889ef906417f9354602ccadad7d0822879620021bd974c1bda479a"
+      "bytes": 11265,
+      "sha256": "22eb664c8996dbf8803014e6539af266ff794bb500514250f3c6b66784eec68a"
     },
     {
       "file": "scripts/smoke_live.py",
@@ -198,14 +233,24 @@
       "sha256": "9fdbd03be2097cdef77acb3cd9adea0edaf531e053158dc1938046d3c5fa1823"
     },
     {
+      "file": "scripts/smoke_reference_browser.py",
+      "bytes": 3767,
+      "sha256": "6be764feb058352181ed5f54b315c0bbcdb1fdfd7da5f15fc77a384a223b65ca"
+    },
+    {
+      "file": "scripts/smoke_references_live.py",
+      "bytes": 1375,
+      "sha256": "fccf82516fe2483c7a8209362153a47506c2ad6179eedab6620f3bf0cd74a2d8"
+    },
+    {
       "file": "scripts/smoke_report_browser.py",
-      "bytes": 7760,
-      "sha256": "ab280baf55c26b837135cda81f5d0f7bf348cd625b9c0a9aa726f6c6916513af"
+      "bytes": 9960,
+      "sha256": "9bdedccaa96ce84a40006a067f680961632687c771c596e0d71095b9f8c12bb6"
     },
     {
       "file": "scripts/verify_release.py",
-      "bytes": 10904,
-      "sha256": "134a8461e3eacee7306954efaddbf241d794478d195a89651d4838b66bcd68a6"
+      "bytes": 13582,
+      "sha256": "ce530808200044a54c7ec10d3702272f73b158d548c13fea9f1f2766e34d34f7"
     },
     {
       "file": "tests/test_desktop.py",
@@ -233,14 +278,24 @@
       "sha256": "159dce783f81b91cac184628a3aa75c0050ed50ac72d667598a28a04305d351d"
     },
     {
+      "file": "tests/test_publications.py",
+      "bytes": 18298,
+      "sha256": "d9e51ce4904eeb3657d271107c439f11c1074e09721416da184cd4e0c37634e7"
+    },
+    {
+      "file": "tests/test_research.py",
+      "bytes": 18152,
+      "sha256": "d6e5fb3b55966482dcc11a8ad55ed1cd04abffa4d685d6cdef7fbc5269a278fb"
+    },
+    {
       "file": "tests/test_search_reports.py",
       "bytes": 12455,
       "sha256": "220f8abb2b393258ec7c4473550bec4370291eb5052e5d69f9a87aff367c1b9e"
     },
     {
       "file": "VALIDATION.md",
-      "bytes": 3001,
-      "sha256": "0e0eac40ee8003a1ba86717d86ca0b8d7cce85ff166feb8b479aafac082df26b"
+      "bytes": 5283,
+      "sha256": "d5bfca7d04f6493b42254ee692ff3feb840b6ee50665998b33659d7b3bcebacc"
     }
   ]
 }

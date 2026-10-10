@@ -69,6 +69,7 @@ def main():
         root = tk.Tk()
         app = DesktopApp(root, workspace/'preferences.json')
         assert app.query.get('1.0','end-1c') == '', 'A new explorer must start with an empty query'
+        assert not app.retrieve_references.get() and not app.build_network.get()
         assert 'Radiobutton.indicator' in str(ttk.Style(root).layout('Database.TCheckbutton'))
         app.database_buttons['crossref'].invoke()
         assert all(value.get() for value in app.sources.values()), 'Database choices must allow multiple selections'
@@ -137,6 +138,47 @@ def main():
                 app.report_history()
                 settle(root,app)
                 assert app.last_result['paper_count']==1
+                seed_report = app.last_report.with_suffix('.json')
+                app.analysis_seed.set('Latest report')
+                app.build_network.set(True)
+                app.analyze_references()
+                settle(root, app)
+                assert app.last_result['reference_status'] == 'complete'
+                assert Path(app.last_result['references']).is_file()
+                assert Path(app.last_result['network']).is_file()
+                assert app.analysis_counts['references']['completed'] == 1
+                assert app.analysis_counts['references']['with_references'] == 1
+                assert app.analysis_counts['network']['status'] == 'complete'
+                assert app.progress_bars['references']['value'] == 1
+                assert app.progress_bars['network']['value'] == 1
+                assert '1/1 papers processed (100%)' in app.progress_labels['references'].get()
+                assert '1 with lists' in app.progress_labels['references'].get()
+                assert 'Citation network' in app.progress_labels['network'].get()
+                assert 'LITERATURE_PROGRESS' not in app.log.get('1.0', 'end')
+                assert 'Reference JSON only fixture' not in app.last_report.read_text(encoding='utf-8')
+                app.resume_analysis()
+                settle(root, app)
+                assert app.last_result['reference_status'] == 'complete'
+                assert app.analysis_counts['references']['completed'] == 1
+                app.resolve_existing_references()
+                settle(root, app)
+                assert app.last_result['resolution_status'] == 'complete'
+                assert app.analysis_counts['resolution']['completed'] == app.analysis_counts['resolution']['total']
+                assert Path(app.last_result['reference_dashboard']).is_file()
+                app.browse_references()
+                assert browser.call_count == 2
+                publications = json.loads(Path(app.last_result['publications']).read_text(encoding='utf-8'))
+                assert publications['coverage']['raw_observations'] == 2
+                assert publications['coverage']['resolved_distinct_publications'] == 1
+                app.last_report = seed_report.with_suffix('.html')
+                app.discovery_direction.set('both')
+                app.discovery_limit.set('2')
+                app.start_discovery()
+                settle(root, app)
+                assert app.last_result['paper_count'] == 2
+                assert len(json.loads(Path(app.last_result['json']).read_text())['discovery']['links']) == 2
+                assert app.analysis_counts['citations']['completed'] == 1
+                assert not app.progress_rows['network'].winfo_manager(), 'Old network progress must reset for discovery'
                 app.search_button.invoke()
                 app.stop_button.invoke()
                 settle(root,app)
@@ -161,7 +203,7 @@ def main():
                     capture(root,Path(args.screenshot).resolve())
                 assert not errors, errors
         app.close()
-    print('Desktop checks passed: empty startup query, independent dot selections, search, deduplication, reports, CSV, library/history, stop, and resume.')
+    print('Desktop checks passed: search, reports, CSV, library/history, references, citation network, progress bars/counts, discovery, stop, and resume.')
 
 
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from literature.reports import enrich_report, write_report
+from literature.research import citation_network
 
 
 def main():
@@ -20,10 +21,16 @@ def main():
                            'authors': 'Example author', 'abstract': f'Mechanosensor findings {i}',
                            'year': 2025 if i <= 10 else 2024, 'publication_types': ['Research' if i % 2 else 'Review'],
                            'search_rank': i, 'relevance_rank': i, 'relevance_score': None,
-                           'doi': f'10.0000/fixture-{i}', 'citation_count': None})
+                           'doi': f'10.0000/fixture-{i}', 'citation_count': None,
+                           'keywords': ['Tension', 'channel gating', 'tension']})
         report = enrich_report({'schema_version': 2, 'library_id': 'browser-fixture', 'search': {'id': 1, 'query': 'TEST_CHANNEL', 'source': 'pubmed',
                                  'sort_order': 'relevance', 'started': '2025-01-01', 'status': 'complete',
                                  'total': 30, 'error': None}, 'papers': papers}, metrics)
+        report['citation_network'] = citation_network(report, {'scope': {'library_id': 'browser-fixture'}, 'papers': [
+            {'paper_id': 1, 'identifiers': {'doi': '10.0000/fixture-1'}, 'status': 'retrieved', 'references': [
+                {'doi': '10.0000/fixture-2', 'observations': [{'provider': 'crossref'}]}]},
+            {'paper_id': 2, 'identifiers': {'doi': '10.0000/fixture-2'}, 'status': 'retrieved', 'references': [
+                {'doi': '10.0000/fixture-3', 'observations': [{'provider': 'europepmc'}]}]}]})
         write_report(report, root / 'fixture.json', root / 'fixture.html')
         errors, requests = [], []
         with sync_playwright() as playwright:
@@ -32,6 +39,16 @@ def main():
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.on('request', lambda request: requests.append(request.url))
             page.goto((root / 'fixture.html').as_uri())
+            assert page.locator('#citation-graph svg').count() == 1
+            assert page.locator('#network-edges tbody tr').count() == 2
+            assert '30/30 papers' in page.locator('#trend-note').inner_text()
+            page.locator('#trend-term').select_option('tension')
+            assert page.locator('#trend-table tbody tr').count() == 2
+            assert '100.0%' in page.locator('#trend-table').inner_text()
+            assert page.locator('#term-pairs tbody tr').count() == 1
+            page.locator('#network-node').select_option('1')
+            assert page.locator('#network-edges tbody tr').count() == 1
+            page.locator('#network-node').select_option('')
             page.get_by_text('Journal impact factors and sources', exact=True).click()
             assert page.locator('#metric-journals tr').count() == 3
             assert page.locator('#metric-journals tr').first.locator('td').first.inner_text() == 'Fixture A'
@@ -53,6 +70,16 @@ def main():
             assert page.locator('#papers tr').count() == 5
             page.locator('#text-filter').fill('findings 2')
             assert page.locator('#papers tr').count() == 1
+            assert page.locator('#citation-graph svg').count() == 0
+            with page.expect_download() as network_info:
+                page.locator('#export-network').click()
+            network_packet = json.loads(Path(network_info.value.path()).read_text(encoding='utf-8'))
+            assert [p['id'] for p in network_packet['nodes']] == [2]
+            assert network_packet['edges'] == []
+            with page.expect_download() as trends_info:
+                page.locator('#export-trends').click()
+            trends_packet = json.loads(Path(trends_info.value.path()).read_text(encoding='utf-8'))
+            assert trends_packet['sources']['keywords']['terms'][0]['paper_count'] == 1
             page.locator('#papers td.title summary').click()
             assert page.locator('#papers td.title details').get_attribute('open') is not None
             page.get_by_text('Edit note and tags', exact=True).click()
@@ -86,6 +113,8 @@ def main():
             assert subset['statistics']['journals'][0]['paper_count'] == 1
             assert subset['journal_metrics']['matched_papers'] == 0
             assert subset['statistics']['review_status'] == {'included': 1}
+            assert subset['keyword_trends']['paper_count'] == 1
+            assert subset['citation_network']['edges'] == []
             page.reload()
             page.locator('#review-filter').select_option('included')
             assert page.locator('#papers tr').count() == 1

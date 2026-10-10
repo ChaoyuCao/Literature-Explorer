@@ -13,8 +13,8 @@ skills/
 tmp/
 build/
 dist/
-github-ready/
-github-ready.zip
+github-ready*/
+github-ready*.zip
 .codex/
 .env
 .env.*

@@ -2,7 +2,7 @@
 
 Search PubMed, Europe PMC, and Crossref, merge duplicate records, and explore the results in an offline HTML report. Literature Explorer includes a Windows desktop interface and a Python command-line interface.
 
-The application collects bibliographic metadata: titles, journals, identifiers, abstracts, authors, publication dates, and other fields supplied by each database. It does not download article PDFs or use AI services currently. Python 3.11 or newer is required for the Python package; the portable Windows app includes its runtime. The code is licensed under MIT.
+The application collects bibliographic metadata: titles, journals, identifiers, abstracts, authors, publication dates, and other fields supplied by each database. It does not download article PDFs or use AI services. Python 3.11 or newer is required for the Python package; the portable Windows app includes its runtime. The code is licensed under MIT.
 
 ## Features
 
@@ -14,10 +14,14 @@ The application collects bibliographic metadata: titles, journals, identifiers, 
 - Organize papers with collections, tags, notes, favorites, and review decisions.
 - Save, compare, and merge searches; resume interrupted searches; reuse cached metadata offline.
 - Load an external journal-metric CSV and apply it to saved reports without searching again.
+- Optionally retrieve reference lists into a separate, resumable JSON file.
+- Explore citation links between collected papers and export their network.
+- Discover papers one citation step from selected seeds, following references, citing papers, or both.
+- Compare keyword/MeSH/title-term trends across years and inspect term co-occurrence.
 
 ## Windows desktop app
 
-The latest distributions are in [releases/0.2.3](releases/0.2.3). Extract the complete Windows ZIP and launch **LiteratureExplorer.exe**. Keep **literature.exe** beside it. No separate Python installation is required.
+The latest distributions are in [releases/0.4.0](releases/0.4.0). Extract the complete Windows ZIP and launch **LiteratureExplorer.exe**. Keep **literature.exe** beside it. No separate Python installation is required.
 
 The query field starts empty. Database choices show a filled dot when selected and allow several selections at once. Enter keywords, choose databases and a per-database limit, and click **Search & build report**. The app includes Search, Paper library, and Search history tabs, with progress, Stop, and Resume controls.
 
@@ -39,7 +43,7 @@ Activate the virtual environment before installing, or use its Python executable
 To install the packaged wheel instead:
 
 ```console
-python -m pip install releases/0.2.3/mechanosensor_literature-0.2.3-py3-none-any.whl
+python -m pip install releases/0.4.0/mechanosensor_literature-0.4.0-py3-none-any.whl
 ```
 
 The application uses Python's standard library and has no third-party runtime package dependencies.
@@ -74,6 +78,43 @@ python -m literature search --saved channels
 Use the IDs returned by `jobs` and `papers` with `resume`, `merge --search-ids`, `compare --search-ids`, `visualize --search-id`, `annotate`, and `collections`. Run a command with `--help` for its arguments. `lookup` accepts DOI, PMID, or PMCID identifiers; `enrich` fills missing metadata for a selected library subset.
 
 HTML notes, tags, favorites, and review decisions are stored in browser local storage. Export annotations and import them with `literature annotations --file FILE` to update the catalogue. Rebuild the report to include those edits. Annotation imports check the catalogue identity and detect stale edits.
+
+## References, citation networks, and discovery
+
+Reference retrieval is **off by default**. Use **Retrieve reference lists** in Citation analysis with the latest report, selected library papers, or selected searches. **Build citation network** is optional. Retrieval immediately produces a browsable evidence file; it does not wait for remote metadata enrichment. **Resolve / enrich retrieved references** is a separate, resumable action. **Browse references** opens the reference browser.
+
+```powershell
+# Retrieve observations for selected saved papers, without enrichment.
+python -m literature references --search-id 1 --ids 1 2 --output outputs/references.json
+# Resolve a previously retrieved file, retaining its original evidence.
+python -m literature resolve-references --report outputs/references.json --references-file outputs/references.references.json --citation-network --output outputs/resolved.json
+# Resolve only a subset of a report's seed papers.
+python -m literature resolve-references --report outputs/references.json --ids 1 --references-file outputs/references.references.json --output outputs/selected.json
+# Explicit one-hop expansion using resolved references.
+python -m literature discover --report outputs/resolved.json --references-file outputs/resolved.references.json --direction references --limit 100 --output outputs/discovery.json
+```
+
+Use the same `--state` catalogue that created the saved report. Commands also accept `--library --ids`, `--search-ids`, and the existing library filters. `--resolve-references` can opt into enrichment during search/reference analysis; the default keeps the two operations separate. Original input files are preserved; select a new output name. The original search query, sources, dates, reported totals, limits and limited-search status remain in the report and reference context.
+
+For `references.json`, the tool writes:
+
+- `references.references.json`: schema 2 original observations, canonical publications, provider checkpoints, matching evidence, candidates, resolution tasks and citation relationships.
+- `references.publications.json`: one metadata row per identified referenced publication, including available title, authors, journal, year, abstract, identifiers, links, library membership and supporting observations. Missing metadata is `null`; unresolved observations are separate.
+- `references.references.html`: an offline reference browser with seed/library/text filters, original evidence, candidate review, provider coverage and publication/evidence JSON exports.
+- `references.network.json`: optional network between displayed papers; repeated observations support one edge. Article-to-itself links are flagged, with evidence IDs, and excluded from normal edges, degree statistics and discovery. Same-author citations to other publications remain valid.
+- `references.html`: the main paper explorer with coverage and a link to the reference browser.
+
+Schema 1 reference files are upgraded in memory and written to new outputs. Legacy `papers.references` groups remain for compatibility and **must not be counted as distinct publications**. Schema 2 uses separate `observations`, `publications`, and `relationships` layers. Canonical IDs can change when identifier bridges consolidate groups; observation IDs preserve evidence continuity. Reference lists remain separate from the main paper JSON/HTML.
+
+Crossref, PubMed XML and Europe PMC supply available reference metadata. PubMed `pubmed` ArticleId values are normalized to PMID. DOI/PMID/PMCID and source-qualified IDs consolidate only when compatible. Existing library metadata is reused; optional enrichment batches PubMed metadata in groups of up to 100 and uses Europe PMC core metadata to bridge identifiers, with Crossref DOI lookup as fallback. Citation-only references get deterministic local and Crossref bibliographic candidates with field-comparison evidence; weak and ambiguous candidates require review and are never automatically merged. Provider list positions never match publications.
+
+The browser reports papers requested/processed, raw observations, distinct identified publications, unresolved/ambiguous/review/conflict observations, distinct citation relationships, flagged self-links, and provider retrieval/pagination outcomes. Counts may consolidate further after enrichment. Missing/unavailable lists are not zero references; completed retrieval or resolution is not a guarantee of a complete bibliography. Network degrees are **local to displayed nodes**, never global citation counts. References identified outside the displayed network are distinguished from unresolved observations. Graphs show up to 60 connected nodes; JSON keeps all edges and evidence IDs.
+
+Discovery follows **one explicit citation step**: references, citing papers, or both. Its limit applies to **new publications**, excluding seeds and publications already in the library. Existing publications are reused without another metadata request and labeled separately from new additions; paths retain parent papers, direction, providers and observation IDs. Candidates beyond the new-paper cap are recorded as deferred. Nothing expands recursively. Select discovered papers explicitly for another expansion. Source search snapshots are preserved.
+
+Stop/resume preserves reference pages and metadata-resolution tasks. Repeat the command with the same output to resume, or use **Resume last analysis / discovery** during the current desktop session. Failed resolution tasks are retried; completed metadata is reused. Failed discovery lookups need `--refresh-references`. `--refresh-references` restarts reference/discovery checkpoints; `--refresh` also bypasses fresh HTTP cache. `--offline` uses cached responses. Progress bars separate retrieval, resolution and network building.
+
+Service conventions follow the [Europe PMC REST documentation](https://europepmc.org/RestfulWebService), [Crossref bibliographic matching guidance](https://github.com/CrossRef/rest-api-doc/blob/master/api_tips.md), and [Crossref request limits](https://community.crossref.org/t/refining-rest-api-limits-for-improved-stability-and-reliability/16137). Requests remain sequential, cached and retryable; Crossref list queries are throttled separately and advertised rate-limit headers are honored. Bibliographic candidates are suggestions, not identity confidence probabilities.
 
 ## Journal impact factors
 
@@ -117,11 +158,11 @@ literature/                 Application source and HTML/JavaScript assets
 examples/                   Generic queries and a fictional CSV format example
 scripts/                    Build, verification, and public-export tools
 tests/                     Synthetic automated tests
-releases/0.2.3/             Latest distributable artifacts and checksums
+releases/0.4.0/             Latest distributable artifacts and checksums
 README.md                   Installation and usage
 DISTRIBUTION.md              Building and sharing releases
 VALIDATION.md               Reproducible verification
 LICENSE                     MIT code license
 ```
 
-Private runtime data, real metric tables, downloaded files, local environments, and build intermediates are excluded by `.gitignore`. To prepare a fresh public snapshot, build a release and run `python -m scripts.prepare_github --release-dir dist/0.2.3`. The exporter uses an explicit allowlist and includes only the newest distribution supplied to it.
+Private runtime data, real metric tables, downloaded files, local environments, and build intermediates are excluded by `.gitignore`. To prepare a fresh public snapshot, build a release and run `python -m scripts.prepare_github --release-dir dist/0.4.0`. The exporter uses an explicit allowlist and includes only the newest distribution supplied to it.

@@ -247,3 +247,27 @@ class Sources:
             return self.stamp(epmc_record(rows[0])), 'europepmc'
         raise ValueError('Provide a DOI, PMID (digits or PMID:digits), or PMCID.')
 
+    def identifier_metadata(self, identifiers):
+        """Europe PMC core metadata can bridge DOI, PMID, and PMCID."""
+        if identifiers.get('pmid'):
+            query = 'EXT_ID:' + identifiers['pmid'] + ' AND SRC:MED'
+        elif identifiers.get('pmcid'):
+            query = 'PMCID:' + identifiers['pmcid']
+        elif identifiers.get('doi'):
+            query = 'DOI:' + identifiers['doi']
+        else:
+            source_key = next((k for k in identifiers if k.startswith('source:')), None)
+            if not source_key:
+                return []
+            value = str(identifiers[source_key]).replace('"', '')
+            query = 'EXT_ID:"' + value + '" AND SRC:' + source_key.split(':', 1)[1]
+        raw = self.http.json(EPMC + '/search', {'query': query, 'format': 'json', 'resultType': 'core', 'pageSize': 100})
+        if int(raw.get('hitCount', 0)) > 100:
+            raise APIError('Identifier lookup returned too many matches; review required.')
+        return [self.stamp(epmc_record(r)) for r in raw.get('resultList', {}).get('result', [])]
+
+    def bibliography_candidates(self, text):
+        """Crossref relevance scores are not identity confidence probabilities."""
+        raw = self.http.json(CROSSREF + '/works', {'query.bibliographic': text, 'rows': 5})
+        return [self.stamp(crossref_record(r)) for r in raw.get('message', {}).get('items', [])]
+

@@ -1,9 +1,11 @@
 """Search, organize, analyze and exchange bibliographic metadata."""
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
+from urllib.parse import quote
 from . import __version__
 from .analysis import compare_searches, merge_searches
 from .collector import Collector
@@ -13,6 +15,10 @@ from .http import HTTP
 from .reports import discover_metrics, enrich_report, load_metrics, write_report
 from .sources import Sources
 from .store import Store
+from .references import ReferenceRetriever, reference_summary, write_json
+from .research import citation_network, discover
+from .publications import canonicalize, publication_export
+from .resolution import resolve_references
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -29,6 +35,12 @@ def report_options(command, config=None):
     command.add_argument('--output', help='Output file; JSON plus HTML by default')
     command.add_argument('--dashboard', help='HTML output path')
     command.add_argument('--format', choices=['json', 'csv', 'bibtex', 'ris'], default='json')
+    command.add_argument('--retrieve-references', action='store_true', help='Save available reference lists in a separate JSON (off by default)')
+    command.add_argument('--references-output', help='Reference JSON/checkpoint path; defaults to OUTPUT.references.json')
+    command.add_argument('--references-file', help='Use an existing reference JSON without retrieving lists again')
+    command.add_argument('--refresh-references', action='store_true', help='Restart reference/discovery checkpoints instead of resuming')
+    command.add_argument('--citation-network', action='store_true', help='Build an in-corpus citation network; retrieves references unless --references-file is supplied')
+    command.add_argument('--resolve-references', action='store_true', help='Optionally bridge reference identifiers and enrich metadata; citation-only candidates remain for review')
 
 
 def remote_filters(command):
@@ -104,6 +116,18 @@ def parser(config=None):
     merge = commands.add_parser('merge', help='Merge saved searches into one deduplicated report with metadata gap filling')
     merge.add_argument('--search-ids', nargs='+', type=int, required=True)
     report_options(merge, config)
+    for name in ('references', 'resolve-references', 'discover'):
+        command = commands.add_parser(name, help='Retrieve reference lists for saved papers' if name == 'references' else 'Discover papers one citation step from selected seeds')
+        selected = command.add_mutually_exclusive_group()
+        selected.add_argument('--search-id', type=int)
+        selected.add_argument('--search-ids', nargs='+', type=int, help='Use the merged papers from several saved searches')
+        selected.add_argument('--report', help='Existing JSON paper report; original files are preserved')
+        selected.add_argument('--library', action='store_true')
+        selection_options(command)
+        report_options(command, config)
+        if name == 'discover':
+            command.add_argument('--direction', choices=['references', 'citations', 'both'], default='references')
+            command.add_argument('--limit', type=int, default=100, help='Maximum unique discovered papers, excluding seeds (default 100)')
     imported = commands.add_parser('import', help='Import JSON, CSV, BibTeX or RIS bibliographies')
     imported.add_argument('file')
     imported.add_argument('--format', choices=['json', 'csv', 'bibtex', 'ris'])
@@ -168,12 +192,106 @@ def specification(args, config, store=None):
     return spec
 
 
-def save_search(store, args, search_id=None, report=None, output_dir='outputs'):
+def save_search(store, args, search_id=None, report=None, output_dir='outputs', analyze=True):
     report = enrich_report(report or store.search_export(search_id), args.journal_metrics, args.metrics_year)
     suffix = {'json': '.json', 'csv': '.csv', 'bibtex': '.bib', 'ris': '.ris'}[args.format]
     output = Path(args.output or Path(output_dir).expanduser() / ('search-' + str(report['search']['id']) + suffix)).expanduser()
+    reference_path = Path(getattr(args, 'references_output', None) or output.with_suffix('.references.json')).expanduser()
+    network_path = output.with_suffix('.network.json')
+    publications_path = output.with_suffix('.publications.json')
+    reference_dashboard = output.with_suffix('.references.html')
+    input_reference = getattr(args, 'references_file', None)
+    wants_references = (getattr(args, 'retrieve_references', False) or getattr(args, 'citation_network', False)
+                        or getattr(args, 'resolve_references', False))
+    if input_reference and getattr(args, 'retrieve_references', False):
+        raise ValueError('Choose --references-file or --retrieve-references, not both.')
+    if getattr(args, 'references_output', None) and not wants_references:
+        raise ValueError('--references-output requires --retrieve-references or --citation-network.')
+    outputs = [output, Path(args.dashboard or output.with_suffix('.html')), reference_path, network_path,
+               publications_path, reference_dashboard]
+    if len({p.resolve() for p in outputs}) != len(outputs):
+        raise ValueError('Paper, HTML, reference, and network paths must be different.')
+    if getattr(args, 'report', None) and Path(args.report).resolve() in {p.resolve() for p in outputs}:
+        raise ValueError('Choose output paths different from the original input report.')
+    if input_reference and Path(input_reference).resolve() in {p.resolve() for p in outputs}:
+        raise ValueError('Paper, HTML, and network outputs must not overwrite the input reference file.')
+    # Write usable search results before optional network requests.
     if args.format == 'json':
-        return write_report(report, output, args.dashboard or str(output.with_suffix('.html')))
+        result = write_report(report, output, args.dashboard or str(output.with_suffix('.html')))
+        if analyze and (wants_references or input_reference):
+            interrupted = False
+            if input_reference:
+                document = json.loads(Path(input_reference).read_text(encoding='utf-8-sig'))
+                reference_path = Path(input_reference)
+            else:
+                try:
+                    document = ReferenceRetriever(args._http, args._progress).retrieve(report, reference_path,
+                                      resume=not args.refresh_references)
+                except KeyboardInterrupt:
+                    document = json.loads(reference_path.read_text(encoding='utf-8'))
+                    interrupted = True
+            if document.get('kind') != 'references':
+                raise ValueError('Choose a reference-list JSON, not a citing-paper list.')
+            if document['scope'].get('library_id') != report.get('library_id'):
+                raise ValueError('Reference file belongs to a different catalogue.')
+            selected_ids = {p['id'] for p in report['papers']}
+            available_ids = {p['id'] for p in document['scope']['papers']}
+            if input_reference and not selected_ids <= available_ids:
+                raise ValueError('Reference input does not cover all selected papers.')
+            if selected_ids != available_ids:
+                document['parent_scope'] = document['scope'].copy()
+                document['papers'] = [e for e in document['papers'] if e['paper_id'] in selected_ids]
+                document['scope'] = {**document['scope'], 'papers': [p for p in document['scope']['papers'] if p['id'] in selected_ids]}
+            # Never mutate a supplied reference fixture/input: write the upgraded
+            # evidence and resumable resolution to the new report's sidecar.
+            reference_path = Path(getattr(args, 'references_output', None) or output.with_suffix('.references.json')).expanduser()
+            if input_reference and reference_path.resolve() == Path(input_reference).resolve():
+                raise ValueError('Reference output must not overwrite its input reference file.')
+            if input_reference and reference_path.exists() and not args.refresh_references:
+                saved = json.loads(reference_path.read_text(encoding='utf-8-sig'))
+                if saved.get('scope') != document.get('scope'):
+                    raise ValueError('Reference output checkpoint belongs to a different paper selection.')
+                document = saved
+            canonicalize(document, report, store.list_papers())
+            write_json(reference_path, document)
+            if args.resolve_references and not interrupted:
+                try:
+                    resolve_references(document, report, store, Sources(args._http), reference_path, args._progress)
+                except KeyboardInterrupt:
+                    interrupted = True
+            network = citation_network(report, document,
+                args._progress if args.citation_network and not interrupted else None)  # Also validates catalogue/identifiers.
+            report['reference_retrieval'] = {**reference_summary(document), 'file': str(reference_path.resolve())}
+            result['references'] = str(reference_path.resolve())
+            result['reference_status'] = document['status']
+            result['resolution_status'] = document.get('resolution_status', 'not_requested')
+            write_json(publications_path, publication_export(document))
+            result['publications'] = str(publications_path.resolve())
+            from .reference_report import write_reference_report
+            write_reference_report(document, reference_dashboard)
+            result['reference_dashboard'] = str(reference_dashboard.resolve())
+            try:
+                browse_href = quote(Path(os.path.relpath(reference_dashboard.resolve(), outputs[1].resolve().parent)).as_posix(), safe='/')
+            except ValueError:
+                browse_href = reference_dashboard.resolve().as_uri()
+            report['reference_analysis'] = {'schema_version': 2, 'coverage': document['coverage'],
+                'publications_file': str(publications_path.resolve()),
+                'references_file': str(reference_path.resolve()),
+                'reference_dashboard': str(reference_dashboard.resolve()),
+                'reference_dashboard_href': browse_href,
+                'provider_outcomes': report['reference_retrieval']['provider_outcomes'],
+                'relationships': document['relationships']}
+            if args.citation_network:
+                report['citation_network'] = network
+                write_json(network_path, network)
+                result['network'] = str(network_path.resolve())
+            result.update(write_report(report, output, args.dashboard or str(output.with_suffix('.html'))))
+            if interrupted:
+                print(json.dumps({'partial_results': result}), file=sys.stderr)
+                raise KeyboardInterrupt
+        return result
+    if wants_references or input_reference:
+        raise ValueError('Reference analysis requires --format json.')
     if args.dashboard and Path(args.dashboard).resolve() == output.resolve():
         raise ValueError('Bibliography and dashboard paths must be different.')
     result = write_records(report['papers'], output, args.format)
@@ -222,6 +340,7 @@ def main(argv=None):
                         cache_ttl=-1 if args.refresh else config['cache_ttl'], offline=args.offline,
                         email=config['email'], ncbi_api_key=config['ncbi_api_key'], progress=progress)
             collector = Collector(store, Sources(http), progress)
+            args._http, args._progress = http, progress
             if hasattr(args, 'journal_metrics'):
                 load_metrics(args.journal_metrics, args.metrics_year)
                 if args.output and args.dashboard and Path(args.output).resolve() == Path(args.dashboard).resolve():
@@ -236,7 +355,6 @@ def main(argv=None):
                             result = collector.search_many(spec['sources'], spec['query'], spec['limit'], spec['sort'], spec['filters'])
                             report = merge_searches(store, collector.multi_search_ids, spec['query'])
                             report['merge']['requested_sources'] = spec['sources']
-                            result.update(save_search(store, args, report=report, output_dir=args.output_dir))
                             result['status'] = report['search']['status']
                         else:
                             result = collector.search(**{'provider': spec['source'], **{k:v for k,v in spec.items() if k != 'source'}})
@@ -246,12 +364,14 @@ def main(argv=None):
                     if getattr(collector, 'multi_search_ids', None):
                         partial = merge_searches(store, collector.multi_search_ids, spec['query'])
                         partial['merge']['requested_sources'] = spec['sources']
-                        print(json.dumps({'partial_results': save_search(store, args, report=partial, output_dir=args.output_dir)}), file=sys.stderr)
+                        print(json.dumps({'partial_results': save_search(store, args, report=partial, output_dir=args.output_dir, analyze=False)}), file=sys.stderr)
                     elif getattr(collector, 'last_job_id', None):
-                        print(json.dumps({'partial_results': save_search(store, args, collector.last_job_id, output_dir=args.output_dir)}), file=sys.stderr)
+                        print(json.dumps({'partial_results': save_search(store, args, collector.last_job_id, output_dir=args.output_dir, analyze=False)}), file=sys.stderr)
                     raise
                 if 'job_id' in result:
                     result.update(save_search(store, args, result['job_id'], output_dir=args.output_dir))
+                elif args.command == 'search' and spec.get('sources'):
+                    result.update(save_search(store, args, report=report, output_dir=args.output_dir))
             elif args.command == 'batch':
                 specs = json.loads(Path(args.file).read_text(encoding='utf-8-sig'))
                 if not isinstance(specs, list) or any(not isinstance(s, dict) or not s.get('query') for s in specs):
@@ -291,6 +411,51 @@ def main(argv=None):
             elif args.command == 'merge':
                 report = merge_searches(store, args.search_ids)
                 result = {**save_search(store, args, report=report, output_dir=args.output_dir), 'status': report['search']['status']}
+            elif args.command in ('references', 'resolve-references', 'discover'):
+                if args.report:
+                    report = json.loads(Path(args.report).read_text(encoding='utf-8-sig'))
+                    if not isinstance(report, dict) or not isinstance(report.get('papers'), list) or 'search' not in report:
+                        raise ValueError('Choose a JSON paper report.')
+                    if report.get('library_id') != store.library_id:
+                        raise ValueError('Select the workspace/catalogue that created this report.')
+                elif args.search_ids:
+                    report = merge_searches(store, args.search_ids)
+                elif args.library or any(v for v in selection(args).values()):
+                    if args.search_id is not None:
+                        report = store.search_export(args.search_id)
+                        allowed = {p['id'] for p in store.list_papers(**selection(args))}
+                        report['papers'] = [p for p in report['papers'] if p['id'] in allowed]
+                    else:
+                        report = store.library_export(**selection(args))
+                else:
+                    report = store.search_export(args.search_id)
+                selected = selection(args)
+                if args.report or args.search_ids:
+                    if any(v for v in selected.values()):
+                        allowed = {p['id'] for p in store.list_papers(**selected)}
+                        report['papers'] = [p for p in report['papers'] if p['id'] in allowed]
+                        report['selection'] = selected
+                if not args.output:
+                    args.output = str(Path(args.output_dir) / (args.command + '-' + str(report['search']['id']) + '.json'))
+                if args.command in ('references', 'resolve-references'):
+                    if args.command == 'resolve-references':
+                        if not args.references_file:
+                            raise ValueError('Use --references-file to resolve previously retrieved observations.')
+                        args.resolve_references = True
+                    if not args.references_file:
+                        args.retrieve_references = True
+                else:
+                    if args.format != 'json':
+                        raise ValueError('Discovery reports require --format json.')
+                    if args.report and Path(args.output).resolve() == Path(args.report).resolve():
+                        raise ValueError('Discovery must not overwrite its seed report.')
+                    report = discover(store, collector.sources, http, report, args.output, args.direction, args.limit,
+                                      progress, args.refresh_references, args.references_file)
+                    args.references_file = None
+                result = save_search(store, args, report=report, output_dir=args.output_dir)
+                if args.command == 'discover':
+                    result['status'] = report['search']['status']
+                    result['discovery_checkpoint'] = report['discovery']['checkpoint']
             elif args.command == 'papers':
                 result = store.list_papers(**selection(args))
             elif args.command == 'jobs':
@@ -351,7 +516,10 @@ def main(argv=None):
         print(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False))
         if isinstance(result, dict) and result.get('status') in ('partial', 'failed', 'interrupted'):
             return 1
-        return 1 if isinstance(result, list) and any(isinstance(r, dict) and r.get('status') == 'failed' for r in result) else 0
+        if isinstance(result, dict) and (result.get('reference_status') in ('partial', 'failed')
+                                       or result.get('resolution_status') in ('partial', 'failed')):
+            return 1
+        return 1 if isinstance(result, list) and any(isinstance(r, dict) and (r.get('status') == 'failed' or r.get('reference_status') in ('partial', 'failed')) for r in result) else 0
     except KeyboardInterrupt:
         print('Interrupted; saved search pages can be resumed with the resume command.', file=sys.stderr)
         return 130

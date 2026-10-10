@@ -1,0 +1,5 @@
+7a0d0d57a217d64fb26b991b004e99976cdc3a1d9b81117fed758d80136d480b  mechanosensor_literature-0.4.0-py3-none-any.whl
+1f35e8514e30464e1ae62649af8ca40d9ace0f87f76d2e71e3d972bc48e41d61  mechanosensor_literature-0.4.0.tar.gz
+92332201b9ad280e33d64fc8c4b3021d6bfb8f056b065f8f9de351b06a5d5630  mechanosensor-literature-0.4.0-windows-x64.zip
+1ce700fa892c7975d3e94bab639cbd4a42859763f1491194e264a52ff200dc0b  release-manifest.json
+f39c83d527e5e61b56a19eaa47ab12cebf08103267772938db7270f846fde35f  verification.json

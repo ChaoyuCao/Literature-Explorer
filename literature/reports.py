@@ -8,6 +8,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from .analysis import metadata_statistics
+from .research import keyword_trends
 
 
 def journal_key(value):
@@ -140,6 +141,7 @@ def enrich_report(report, metrics_path=None, metrics_year=None):
         "Author counts use structured author lists only; keywords and title terms count papers containing a term, not term occurrences. Name variants are not assumed to be the same person.",
         "Library annotations reflect current review decisions; bibliographic search snapshots remain unchanged.",
     ]
+    report['keyword_trends'] = keyword_trends(papers)
     return report
 
 
